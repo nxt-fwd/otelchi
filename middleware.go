@@ -41,6 +41,13 @@ func Middleware(serverName string, opts ...Option) func(next http.Handler) http.
 		cfg.propagators = otel.GetTextMapPropagator()
 	}
 
+	if cfg.spanVisitor == nil {
+		cfg.spanVisitor = func(httpStatus int, span oteltrace.Span) {
+			// default span visitor sets the span status based on the http status code
+			span.SetStatus(httpconv.ServerStatus(httpStatus))
+		}
+	}
+
 	return func(handler http.Handler) http.Handler {
 		return traceware{
 			config:     cfg,
@@ -201,8 +208,8 @@ func (tw traceware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// set status code attribute
 	span.SetAttributes(semconv.HTTPStatusCode(rrw.status))
 
-	// set span status
-	span.SetStatus(httpconv.ServerStatus(rrw.status))
+	// visit span - the default span visitor sets the span status based on the http status code
+	tw.spanVisitor(rrw.status, span)
 }
 
 func addPrefixToSpanName(shouldAdd bool, prefix, spanName string) string {
